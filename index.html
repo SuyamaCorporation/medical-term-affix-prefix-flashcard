@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical Term Flashcard Trainer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+.perspective{perspective:1000px}
+.card-inner{transform-style:preserve-3d;transition:transform .6s cubic-bezier(.4,0,.2,1)}
+.card-inner.flipped{transform:rotateY(180deg)}
+.card-face{backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.card-back{transform:rotateY(180deg)}
+.progress-ring-circle{transition:stroke-dashoffset .5s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.shake{animation:shake .3s ease}
+@keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
+.pop{animation:pop .25s ease}
+</style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen font-sans">
+<div class="max-w-2xl mx-auto px-4 py-8">
+  <div class="text-center mb-6">
+    <h1 class="text-3xl font-bold text-indigo-800 mb-1">Medical Affix Trainer</h1>
+    <p class="text-indigo-500 text-sm">Master prefixes & suffixes used in medicine</p>
+  </div>
+
+  <div class="flex justify-center gap-2 mb-6">
+    <button id="btnFlash" onclick="setMode('flash')" class="px-5 py-2 rounded-full text-sm font-semibold bg-indigo-600 text-white shadow transition">Flashcards</button>
+    <button id="btnQuiz" onclick="setMode('quiz')" class="px-5 py-2 rounded-full text-sm font-semibold bg-white text-indigo-600 border border-indigo-300 shadow transition">Quiz Mode</button>
+    <button id="btnHard" onclick="setMode('hard')" class="px-5 py-2 rounded-full text-sm font-semibold bg-white text-rose-500 border border-rose-300 shadow transition">Hard Cards <span id="hardCount" class="ml-1 bg-rose-100 text-rose-600 px-1.5 rounded-full text-xs">0</span></button>
+  </div>
+
+  <div class="flex items-center justify-between mb-4 px-1">
+    <div class="text-sm text-indigo-700 font-medium" id="cardCounter">Card 1 / 80</div>
+    <div class="flex items-center gap-3">
+      <div class="text-xs text-gray-500" id="streakLabel">Streak: 0</div>
+      <svg width="48" height="48" aria-label="Progress ring">
+        <circle cx="24" cy="24" r="20" fill="none" stroke="#e0e7ff" stroke-width="5"/>
+        <circle id="progressRing" class="progress-ring-circle" cx="24" cy="24" r="20" fill="none" stroke="#6366f1" stroke-width="5" stroke-linecap="round" stroke-dasharray="125.66" stroke-dashoffset="125.66" transform="rotate(-90 24 24)"/>
+        <text x="24" y="28" text-anchor="middle" font-size="10" fill="#4338ca" font-weight="bold" id="progressPct">0%</text>
+      </svg>
+    </div>
+  </div>
+
+  <div id="flashSection">
+    <div class="perspective w-full mb-6" style="height:220px" id="cardWrap">
+      <div class="card-inner w-full h-full relative cursor-pointer" id="cardInner" onclick="flipCard()" role="button" tabindex="0" aria-label="Flip card" onkeydown="if(event.key==='Enter'||event.key===' ')flipCard()">
+        <div class="card-face absolute inset-0 bg-white rounded-2xl shadow-xl flex flex-col items-center justify-center p-6">
+          <div class="text-xs uppercase tracking-widest text-indigo-400 mb-3" id="cardType">PREFIX</div>
+          <div class="text-5xl font-bold text-indigo-700 mb-2" id="cardFront">cardio-</div>
+          <div class="text-xs text-gray-400 mt-4">Tap to reveal</div>
+        </div>
+        <div class="card-face card-back absolute inset-0 bg-indigo-600 rounded-2xl shadow-xl flex flex-col items-center justify-center p-6 text-white">
+          <div class="text-xs uppercase tracking-widest text-indigo-300 mb-2">MEANING</div>
+          <div class="text-3xl font-bold mb-3" id="cardMeaning">Heart</div>
+          <div class="text-indigo-200 text-sm" id="cardExample">e.g. cardiology, cardiogram</div>
+        </div>
+      </div>
+    </div>
+    <div class="flex justify-center gap-3 mb-4">
+      <button onclick="rateCard('easy')" class="px-5 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold shadow text-sm transition">Easy ✓</button>
+      <button onclick="rateCard('hard')" class="px-5 py-2 bg-rose-400 hover:bg-rose-500 text-white rounded-xl font-semibold shadow text-sm transition">Hard ✗</button>
+      <button onclick="nextCard()" class="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold shadow text-sm transition">Skip →</button>
+    </div>
+  </div>
+
+  <div id="quizSection" class="hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-6 mb-4">
+      <div class="text-xs uppercase tracking-widest text-indigo-400 mb-2">What does this mean?</div>
+      <div class="text-3xl font-bold text-indigo-700 mb-1" id="quizMeaning">Heart</div>
+      <div class="text-sm text-gray-400" id="quizHint">Pick the correct prefix/suffix</div>
+    </div>
+    <div id="quizOptions" class="grid grid-cols-2 gap-3 mb-4"></div>
+    <div id="quizFeedback" class="text-center text-sm font-semibold h-6"></div>
+  </div>
+
+  <div class="flex justify-between items-center mt-2 px-1">
+    <button onclick="prevCard()" class="text-indigo-400 hover:text-indigo-700 text-sm font-medium transition">← Prev</button>
+    <button onclick="resetProgress()" class="text-xs text-gray-400 hover:text-red-400 transition">Reset Progress</button>
+    <button onclick="nextCard()" class="text-indigo-400 hover:text-indigo-700 text-sm font-medium transition">Next →</button>
+  </div>
+
+  <div class="mt-6 bg-white/70 rounded-xl p-4">
+    <div class="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wider">Session Stats</div>
+    <div class="grid grid-cols-3 gap-2 text-center">
+      <div><div class="text-xl font-bold text-green-600" id="statEasy">0</div><div class="text-xs text-gray-400">Easy</div></div>
+      <div><div class="text-xl font-bold text-rose-500" id="statHard">0</div><div class="text-xs text-gray-400">Hard</div></div>
+      <div><div class="text-xl font-bold text-indigo-600" id="statSeen">0</div><div class="text-xs text-gray-400">Seen</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CARDS=[
+  {affix:"cardio-",type:"PREFIX",meaning:"Heart",example:"cardiology, cardiogram"},
+  {affix:"-itis",type:"SUFFIX",meaning:"Inflammation",example:"appendicitis, tonsillitis"},
+  {affix:"-ectomy",type:"SUFFIX",meaning:"Surgical removal",example:"appendectomy, mastectomy"},
+  {affix:"hepat-",type:"PREFIX",meaning:"Liver",example:"hepatitis, hepatology"},
+  {affix:"-algia",type:"SUFFIX",meaning:"Pain",example:"neuralgia, myalgia"},
+  {affix:"-ology",type:"SUFFIX",meaning:"Study of",example:"biology, pathology"},
+  {affix:"derm-",type:"PREFIX",meaning:"Skin",example:"dermatology, dermatitis"},
+  {affix:"-plasty",type:"SUFFIX",meaning:"Surgical repair",example:"rhinoplasty, arthroplasty"},
+  {affix:"neuro-",type:"PREFIX",meaning:"Nerve",example:"neurology, neuropathy"},
+  {affix:"-oscopy",type:"SUFFIX",meaning:"Visual examination",example:"endoscopy, colonoscopy"},
+  {affix:"osteo-",type:"PREFIX",meaning:"Bone",example:"osteoporosis, osteology"},
+  {affix:"-oma",type:"SUFFIX",meaning:"Tumor/mass",example:"melanoma, carcinoma"},
+  {affix:"gastr-",type:"PREFIX",meaning:"Stomach",example:"gastritis, gastroscopy"},
+  {affix:"-pathy",type:"SUFFIX",meaning:"Disease/disorder",example:"neuropathy, myopathy"},
+  {affix:"hem-",type:"PREFIX",meaning:"Blood",example:"hematology, hemorrhage"},
+  {affix:"-emia",type:"SUFFIX",meaning:"Blood condition",example:"anemia, leukemia"},
+  {affix:"bronch-",type:"PREFIX",meaning:"Airway",example:"bronchitis, bronchoscopy"},
+  {affix:"-gram",type:"SUFFIX",meaning:"Record/image",example:"cardiogram, mammogram"},
+  {affix:"nephr-",type:"PREFIX",meaning:"Kidney",example:"nephrology, nephritis"},
+  {affix:"-lysis",type:"SUFFIX",meaning:"Breakdown/destruction",example:"hemolysis, dialysis"},
+  {affix:"arthr-",type:"PREFIX",meaning:"Joint",example:"arthritis, arthroplasty"},
+  {affix:"-osis",type:"SUFFIX",meaning:"Abnormal condition",example:"fibrosis, thrombosis"},
+  {affix:"my-",type:"PREFIX",meaning:"Muscle",example:"myalgia, myopathy"},
+  {affix:"-tomy",type:"SUFFIX",meaning:"Incision/cutting",example:"lobotomy, laparotomy"},
+  {affix:"cyst-",type:"PREFIX",meaning:"Bladder/sac",example:"cystitis, cystoscopy"},
+  {affix:"-cele",type:"SUFFIX",meaning:"Hernia/swelling",example:"hydrocele, rectocele"},
+  {affix:"encephal-",type:"PREFIX",meaning:"Brain",example:"encephalitis, encephalopathy"},
+  {affix:"-stenosis",type:"SUFFIX",meaning:"Narrowing",example:"aortic stenosis, pyloric stenosis"},
+  {affix:"phleb-",type:"PREFIX",meaning:"Vein",example:"phlebitis, phlebotomy"},
+  {affix:"-rrhea",type:"SUFFIX",meaning:"Flow/discharge",example:"diarrhea, dysmenorrhea"},
+  {affix:"thorac-",type:"PREFIX",meaning:"Chest",example:"thoracotomy, thoracic"},
+  {affix:"-malacia",type:"SUFFIX",meaning:"Softening",example:"osteomalacia, chondromalacia"},
+  {affix:"ophthalm-",type:"PREFIX",meaning:"Eye",example:"ophthalmology, ophthalmitis"},
+  {affix:"-megaly",type:"SUFFIX",meaning:"Enlargement",example:"hepatomegaly, acromegaly"},
+  {affix:"ot-",type:"PREFIX",meaning:"Ear",example:"otology, otitis"},
+  {affix:"-stomy",type:"SUFFIX",meaning:"Surgical opening",example:"colostomy, tracheostomy"},
+  {affix:"pneum-",type:"PREFIX",meaning:"Lung/air",example:"pneumonia, pneumothorax"},
+  {affix:"-sclerosis",type:"SUFFIX",meaning:"Hardening",example:"atherosclerosis, multiple sclerosis"},
+  {affix:"psych-",type:"PREFIX",meaning:"Mind",example:"psychiatry, psychology"},
+  {affix:"-phobia",type:"SUFFIX",meaning:"Fear",example:"claustrophobia, agoraphobia"},
+  {affix:"vas-",type:"PREFIX",meaning:"Blood vessel",example:"vascular, vasodilation"},
+  {affix:"-trophy",type:"SUFFIX",meaning:"Growth/nourishment",example:"atrophy, hypertrophy"},
+  {affix:"carcin-",type:"PREFIX",meaning:"Cancer",example:"carcinoma, carcinogen"},
+  {affix:"-rrhage",type:"SUFFIX",meaning:"Bursting forth",example:"hemorrhage, menorrhagia"},
+  {affix:"cyan-",type:"PREFIX",meaning:"Blue",example:"cyanosis, cyanide"},
+  {affix:"-centesis",type:"SUFFIX",meaning:"Surgical puncture",example:"amniocentesis, arthrocentesis"},
+  {affix:"erythr-",type:"PREFIX",meaning:"Red",example:"erythrocyte, erythema"},
+  {affix:"-pexy",type:"SUFFIX",meaning:"Surgical fixation",example:"nephropexy, orchiopexy"},
+  {affix:"leuk-",type:"PREFIX",meaning:"White",example:"leukocyte, leukemia"},
+  {affix:"-plegia",type:"SUFFIX",meaning:"Paralysis",example:"paraplegia, hemiplegia"},
+  {affix:"lith-",type:"PREFIX",meaning:"Stone",example:"lithiasis, lithotripsy"},
+  {affix:"-dynia",type:"SUFFIX",meaning:"Pain",example:"cephalodynia, pleurodynia"},
+  {affix:"micro-",type:"PREFIX",meaning:"Small",example:"microscope, microbiology"},
+  {affix:"-phage",type:"SUFFIX",meaning:"Eating/devouring",example:"macrophage, bacteriophage"},
+  {affix:"hyper-",type:"PREFIX",meaning:"Above/excessive",example:"hypertension, hyperglycemia"},
+  {affix:"-poiesis",type:"SUFFIX",meaning:"Formation",example:"hematopoiesis, erythropoiesis"},
+  {affix:"hypo-",type:"PREFIX",meaning:"Below/deficient",example:"hypoglycemia, hypothyroidism"},
+  {affix:"-genesis",type:"SUFFIX",meaning:"Origin/formation",example:"pathogenesis, carcinogenesis"},
+  {affix:"tachy-",type:"PREFIX",meaning:"Fast",example:"tachycardia, tachypnea"},
+  {affix:"-uria",type:"SUFFIX",meaning:"Urine condition",example:"hematuria, glycosuria"},
+  {affix:"brady-",type:"PREFIX",meaning:"Slow",example:"bradycardia, bradypnea"},
+  {affix:"-penia",type:"SUFFIX",meaning:"Deficiency",example:"leukopenia, thrombocytopenia"},
+  {affix:"poly-",type:"PREFIX",meaning:"Many/multiple",example:"polyuria, polycythemia"},
+  {affix:"-emesis",type:"SUFFIX",meaning:"Vomiting",example:"hematemesis, hyperemesis"},
+  {affix:"pan-",type:"PREFIX",meaning:"All/entire",example:"pancreas, pandemic"},
+  {affix:"-ectasis",type:"SUFFIX",meaning:"Dilation/expansion",example:"bronchiectasis, atelectasis"},
+  {affix:"bi-",type:"PREFIX",meaning:"Two/double",example:"bilateral, bicuspid"},
+  {affix:"-ptosis",type:"SUFFIX",meaning:"Drooping/falling",example:"blepharoptosis, nephroptosis"},
+  {affix:"hemi-",type:"PREFIX",meaning:"Half",example:"hemiplegia, hemisphere"},
+  {affix:"-rrhaphy",type:"SUFFIX",meaning:"Suturing",example:"herniorrhaphy, colporrhaphy"},
+  {affix:"para-",type:"PREFIX",meaning:"Beside/abnormal",example:"paraplegia, parasite"},
+  {affix:"-blast",type:"SUFFIX",meaning:"Immature cell",example:"osteoblast, lymphoblast"},
+  {affix:"peri-",type:"PREFIX",meaning:"Surrounding",example:"pericardium, periosteum"},
+  {affix:"-cyte",type:"SUFFIX",meaning:"Cell",example:"erythrocyte, leukocyte"},
+  {affix:"anti-",type:"PREFIX",meaning:"Against",example:"antibiotic, antigen"},
+  {affix:"-ase",type:"SUFFIX",meaning:"Enzyme",example:"lipase, amylase"},
+  {affix:"mal-",type:"PREFIX",meaning:"Bad/abnormal",example:"malnutrition, malignant"},
+  {affix:"-oid",type:"SUFFIX",meaning:"Resembling",example:"lymphoid, mucoid"},
+  {affix:"trans-",type:"PREFIX",meaning:"Across/through",example:"transfusion, transplant"},
+  {affix:"-al",type:"SUFFIX",meaning:"Pertaining to",example:"cervical, femoral"}
+];
+
+let mode='flash',idx=0,flipped=false,streak=0;
+let progress=JSON.parse(localStorage.getItem('medAffix_progress')||'{}');
+let hardSet=new Set(JSON.parse(localStorage.getItem('medAffix_hard')||'[]'));
+let stats={easy:0,hard:0,seen:new Set()};
+let deck=[...Array(CARDS.length).keys()];
+let quizActive=false;
+
+function saveProgress(){localStorage.setItem('medAffix_progress',JSON.stringify(progress));localStorage.setItem('medAffix_hard',JSON.stringify([...hardSet]));}
+
+function getDecksForMode(){
+  if(mode==='hard')return hardSet.size?[...hardSet]:[...Array(CARDS.length).keys()];
+  return[...Array(CARDS.length).keys()];
+}
+
+function setMode(m){
+  mode=m;
+  ['btnFlash','btnQuiz','btnHard'].forEach(id=>document.getElementById(id).className='px-5 py-2 rounded-full text-sm font-semibold bg-white text-indigo-600 border border-indigo-300 shadow transition');
+  const map={flash:'btnFlash',quiz:'btnQuiz',hard:'btnHard'};
+  document.getElementById(map[m]).className='px-5 py-2 rounded-full text-sm font-semibold bg-indigo-600 text-white shadow transition';
+  deck=getDecksForMode();
+  idx=0;flipped=false;
+  document.getElementById('flashSection').classList.toggle('hidden',m==='quiz');
+  document.getElementById('quizSection').classList.toggle('hidden',m!=='quiz');
+  if(m==='quiz')renderQuiz();else renderCard();
+}
+
+function renderCard(){
+  if(!deck.length)return;
+  const c=CARDS[deck[idx%deck.length]];
+  document.getElementById('cardType').textContent=c.type;
+  document.getElementById('cardFront').textContent=c.affix;
+  document.getElementById('cardMeaning').textContent=c.meaning;
+  document.getElementById('cardExample').textContent='e.g. '+c.example;
+  document.getElementById('cardCounter').textContent='Card '+(idx%deck.length+1)+' / '+deck.length;
+  const inner=document.getElementById('cardInner');
+  inner.classList.remove('flipped');
+  inner.classList.remove('pop');
+  void inner.offsetWidth;
+  inner.classList.add('pop');
+  flipped=false;
+  updateRing();
+}
+
+function flipCard(){
+  const inner=document.getElementById('cardInner');
+  inner.classList.toggle('flipped');
+  flipped=!flipped;
+  if(flipped){stats.seen.add(deck[idx%deck.length]);document.getElementById('statSeen').textContent=stats.seen.size;}
+}
+
+function rateCard(r){
+  const ci=deck[idx%deck.length];
+  if(r==='easy'){progress[ci]=(progress[ci]||0)+1;hardSet.delete(ci);stats.easy++;document.getElementById('statEasy').textContent=stats.easy;streak++;}
+  else{hardSet.add(ci);stats.hard++;document.getElementById('statHard').textContent=stats.hard;streak=0;}
+  document.getElementById('streakLabel').textContent='Streak: '+streak;
+  document.getElementById('hardCount').textContent=hardSet.size;
+  saveProgress();
+  nextCard();
+}
+
+function nextCard(){idx=(idx+1)%deck.length;flipped=false;renderCard();}
+function prevCard(){idx=(idx-1+deck.length)%deck.length;flipped=false;renderCard();}
+
+function updateRing(){
+  const known=Object.keys(progress).length;
+  const pct=Math.round(known/CARDS.length*100);
+  const circ=125.66;
+  const offset=circ-(circ*pct/100);
+  document.getElementById('progressRing').style.strokeDashoffset=offset;
+  document.getElementById('progressPct').textContent=pct+'%';
+}
+
+function renderQuiz(){
+  if(!deck.length)return;
+  const ci=deck[idx%deck.length];
+  const c=CARDS[ci];
+  document.getElementById('quizMeaning').textContent=c.meaning;
+  document.getElementById('quizHint').textContent='Pick the correct '+c.type.toLowerCase();
+  document.getElementById('cardCounter').textContent='Card '+(idx%deck.length+1)+' / '+deck.length;
+  const wrong=[];
+  while(wrong.length<3){const r=Math.floor(Math.random()*CARDS.length);if(r!==ci&&!wrong.includes(r))wrong.push(r);}
+  const opts=[ci,...wrong].sort(()=>Math.random()-.5);
+  const container=document.getElementById('quizOptions');
+  container.innerHTML='';
+  document.getElementById('quizFeedback').textContent='';
+  opts.forEach(oi=>{
+    const btn=document.createElement('button');
+    btn.textContent=CARDS[oi].affix;
+    btn.className='py-4 px-3 bg-white border-2 border-indigo-200 rounded-xl font-bold text-indigo-700 text-lg hover:border-indigo-400 transition shadow';
+    btn.onclick=()=>checkQuiz(oi,ci,btn,container);
+    container.appendChild(btn);
+  });
+  quizActive=true;
+}
+
+function checkQuiz(chosen,correct,btn,container){
+  if(!quizActive)return;
+  quizActive=false;
+  const fb=document.getElementById('quizFeedback');
+  if(chosen===correct){
+    btn.className='py-4 px-3 bg-green-100 border-2 border-green-500 rounded-xl font-bold text-green-700 text-lg shadow';
+    fb.textContent='✓ Correct!';fb.className='text-center text-sm font-semibold text-green-600 h-6';
+    progress[correct]=(progress[correct]||0)+1;hardSet.delete(correct);streak++;stats.easy++;
+    document.getElementById('statEasy').textContent=stats.easy;
+    document.getElementById('streakLabel').textContent='Streak: '+streak;
+  } else {
+    btn.className='py-4 px-3 bg-red-100 border-2 border-red-400 rounded-xl font-bold text-red-600 text-lg shadow shake';
+    fb.textContent='✗ Correct: '+CARDS[correct].affix;fb.className='text-center text-sm font-semibold text-rose-600 h-6';
+    hardSet.add(correct);streak=0;stats.hard++;
+    document.getElementById('statHard').textContent=stats.hard;
+    document.getElementById('streakLabel').textContent='Streak: '+streak;
+    [...container.querySelectorAll('button')].find(b=>b.textContent===CARDS[correct].affix)?.classList.add('border-green-500','bg-green-50');
+  }
+  stats.seen.add(correct);document.getElementById('statSeen').textContent=stats.seen.size;
+  document.getElementById('hardCount').textContent=hardSet.size;
+  saveProgress();updateRing();
+  setTimeout(()=>{idx=(idx+1)%deck.length;renderQuiz();},900);
+}
+
+function resetProgress(){if(!confirm('Reset all progress?'))return;progress={};hardSet.clear();stats={easy:0,hard:0,seen:new Set()};streak=0;idx=0;saveProgress();document.getElementById('statEasy').textContent=0;document.getElementById('statHard').textContent=0;document.getElementById('statSeen').textContent=0;document.getElementById('streakLabel').textContent='Streak: 0';document.getElementById('hardCount').textContent=0;updateRing();if(mode==='quiz')renderQuiz();else renderCard();}
+
+setMode('flash');
+document.getElementById('hardCount').textContent=hardSet.size;
+updateRing();
+</script>
+</body>
+</html>
